@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ABC Inventory & Itinerary Manager — Local</title>
+<style>
+  :root{
+    --bg:#0f1724; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8; --text:#e6eef6;
+    --danger:#ef4444; --success:#10b981;
+  }
+  *{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+  body{margin:0;background:linear-gradient(180deg,#071024 0%, #071827 100%); color:var(--text); padding:18px;}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+  h1{font-size:20px;margin:0}
+  .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:14px;border-radius:10px; box-shadow: 0 8px 24px rgba(2,6,23,0.6);}
+  nav{display:flex;gap:8px;flex-wrap:wrap}
+  button, .btn {background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--text);padding:8px 10px;border-radius:8px;cursor:pointer}
+  .btn-primary{background:linear-gradient(90deg,var(--accent),#60a5fa); color:#032; border:none}
+  .grid{display:grid;gap:12px}
+  .cols-3{grid-template-columns:1fr 1fr 1fr}
+  .cols-2{grid-template-columns:1fr 1fr}
+  .flex{display:flex;gap:8px;align-items:center}
+  input,select,textarea{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:var(--text);width:100%}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.03);text-align:left;font-size:13px}
+  .small{font-size:12px;color:var(--muted)}
+  .muted{color:var(--muted)}
+  .tag{padding:4px 8px;border-radius:999px;font-size:12px}
+  .in{background:rgba(16,185,129,0.12);color:var(--success)}
+  .out{background:rgba(239,68,68,0.08);color:var(--danger)}
+  .controls{display:flex;gap:8px;flex-wrap:wrap}
+  .right{margin-left:auto}
+  .danger{border-color:rgba(239,68,68,0.2)}
+  .compact td, .compact th{padding:6px;font-size:12px}
+  .footer{margin-top:20px;color:var(--muted);font-size:13px}
+  .search{display:flex;gap:8px}
+  .switch{display:inline-flex;align-items:center;gap:6px}
+  .badge{background:rgba(255,255,255,0.04);padding:6px 8px;border-radius:8px;font-weight:600}
+  /* responsive */
+  @media(max-width:900px){ .cols-3{grid-template-columns:1fr} .cols-2{grid-template-columns:1fr} header{flex-direction:column;align-items:flex-start} .right{margin-left:0} }
+</style>
+</head>
+<body>
+
+<header class="card">
+  <div>
+    <h1 id="title">ABC — Inventory & Itinerary Manager</h1>
+    <div class="small muted">Host: <strong id="hostName">Amit</strong> · Local only (saved in browser)</div>
+  </div>
+
+  <nav class="right">
+    <button id="nav-master" class="btn">Master Items</button>
+    <button id="nav-incoming" class="btn">Incoming / Purchase</button>
+    <button id="nav-outgoing" class="btn">Outgoing / Issue</button>
+    <button id="nav-projects" class="btn">Projects</button>
+    <button id="nav-reports" class="btn btn-primary">Reports / Export</button>
+    <button id="btn-admin" class="btn">Admin</button>
+  </nav>
+</header>
+
+<!-- MAIN CONTAINER -->
+<main id="app" style="margin-top:12px"></main>
+
+<footer class="footer">
+  <div>Made for <strong>Amit</strong>. Data is saved to this browser only. Clear browser site data to reset.</div>
+</footer>
+
+<script>
+/*
+  Local Inventory & Itinerary Manager (single-file)
+  - Uses localStorage to persist: items, transactions, projects, settings, users
+  - Amit is default admin. Admin actions: add/edit master items, change company name, export/import, manage users.
+  - Two transaction types: INCOMING (purchase/received) and OUTGOING (issue/transfer)
+  - Projects can be created and selected when issuing/receiving.
+  - Export to CSV / JSON.
+*/
+
+/* --------------- INITIAL DATA & UTILITIES --------------- */
+
+const STORAGE_KEY = 'abc_inventory_v1';
+
+const defaultItems = [
+`1\tOU (ALPHA)`,
+`2\tIU (ALPHA)`,
+`3\tOU (DELTA)`,
+`4\tIU (DELTA)`,
+`5\tWEATHER CAP`,
+`6\tOU CLAMP`,
+`7\tPLASTIC TRIPODE`,
+`8\tIRON TRIPODE WITH NUT/BOLT`,
+`9\tTOWER MOUNTING TRIPODE WITH NUT/BOLT`,
+`10\tUNIVERSAL CLAMP`,
+`11\tBATLEE (SMALL/BIG)`,
+`12\tBATLEE CLAMP`,
+`13\tGAYRO`,
+`14\tGAYRO CLAMP`,
+`15\tFIBER SPLICING MACHING`,
+`16\tPOE (48V/24V)`,
+`17\tPOE FOR BATLEE`,
+`18\tPOWER STRIPE`,
+`19\tLEPTOP (      ), (                          ) WITH CHARGER (         )`,
+`20\tGREEN LASER LIGHT WITH CHARGER ADAPTER`,
+`21\tIP & TISSUE PAPER SET`,
+`22\tHAMMER`,
+`23\tPLIER`,
+`24\tT- SPANNER (13)`,
+`25\tD- LINK SWITCH (08 PORT)`,
+`26\tS/M FIBER PATCH CORE CABLE (SINGLE CONNECTOR)`,
+`27\tM/M FIBER PATCH CORE CABLE (SINGLE CONNECTOR)`,
+`28\tS/M FIBER PATCH CORE CABLE (DOUBLE CONNECTOR)`,
+`29\tM/M FIBER PATCH CORE CABLE (DOUBLE CONNECTOR)`,
+`30\tDOUBLE SIDE SPANNER (10/11)`,
+`31\tDOUBLE SIDE SPANNER (12/13)`,
+`32\tDOUBLE SIDE SPANNER (14/15)`,
+`33\tDOUBLE SIDE SPANNER (16/17)`,
+`34\tDOUBLE SIDE SPANNER (18/19)`,
+`35\tUSB TO LAN ADAPTER`,
+`36\tETHERNET CONNECTOR (RJ45/RJ11)`,
+`37\tFIBER JOINT CONNECTOR`,
+`38\tMULTI MEATER`,
+`39\tLAN TESTER`,
+`40\tDRILL MACHINE`,
+`41\tSCREW DRIVER SET`,
+`42\tCUTTER`,
+`43\tLN KEY SET`,
+`44\tIU POWER CABLE`,
+`45\tCAT 6 CABLE (1G) (1/2/3/5/10) MTR`,
+`46\tDRILL BIT`,
+`47\tMASKING TAP ROLL`,
+`48\tNAV TAP ROLL`,
+`49\tNAV LOGO STICKER`,
+`50\tGAYRO CONTROL UNIT`,
+`51\tOU STICKER`,
+`52\tPOE POWER CABLE`,
+`53\tUPS & INVERTER`,
+`54\tFIBER ENCLOSER (SMALL/BIG)`,
+`55\tHYBRID CABLE`,
+`56\tC- CLAMP`,
+`57\tDOUBLE END RING SPANNER (6/7)`,
+`58\tDOUBLE END RING SPANNER (8/9)`,
+`59\tDOUBLE END RING SPANNER (10/11)`,
+`60\tDOUBLE END RING SPANNER (12/13)`,
+`61\tDOUBLE END RING SPANNER (14/15)`,
+`62\tDOUBLE END RING SPANNER (16/17)`,
+`63\tTOWER SAFETY BELT & CAP`,
+`64\tIU RACK`,
+`65\tRAPPING ROLL`,
+`66\tMEDIA CONVERTER WITH POWER ADAPTER`,
+`67\tVIAVI MTS 5800 (BIRD TESTER) WITH POWER ADAPTER`,
+`68\tSPRAY PAINT BOTTLE`,
+`69\tBLUE CAT6 LAN CABLE`,
+`70\tYELLOW CAT6 LAN CABLE`,
+`71\tLC TO LC DUPLEX FIBER PATCH CORE CABLE`,
+`72\tST TO ST DUPLEX FIBER PATCH CORE CABLE`,
+`73\tLC TO SC DUPLEX FIBER PATCH CORE CABLE`,
+`74\tDAHUA 2MP IP CAMERA WITH POWER ADAPTER`,
+`75\tDAHUA 2MP BULLET IP CAMERA WITH POWER ADAPTER`,
+`76\tMATRIX IP TELEPHONE`
+].map(line=>{
+  const parts=line.split('\t');
+  return { id: parts[0].trim(), name: parts[1].trim(), sku: parts[0].trim(), meta:"", qty:0 }
+});
+
+function loadState(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(!raw){
+    const initial = {
+      companyName: "ABC",
+      host: "Amit",
+      users: [{username:'Amit',password:'admin',role:'admin'}],
+      items: defaultItems,
+      projects: [],
+      transactions: [] // { id, type:'IN'|'OUT', itemId, qty, price, who, date, projectId|null, notes, returned:boolean }
+    };
+    saveState(initial);
+    return initial;
+  }
+  try{
+    return JSON.parse(raw);
+  }catch(e){
+    console.error('load parse error',e);
+    return {companyName:"ABC",host:"Amit",users:[{username:'Amit',password:'admin',role:'admin'}],items:defaultItems,projects:[],transactions:[]};
+  }
+}
+function saveState(state){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function uid(prefix='id') { return prefix + '_' + Math.random().toString(36).slice(2,9); }
+function todayIso(){ return new Date().toISOString(); }
+function toCSV(rows){ return rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join("\n"); }
+
+let state = loadState();
+let currentUser = state.users[0]; // local simple auth (Amit)
+let view = 'master'; // master|incoming|outgoing|projects|reports
+
+/* --------------- RENDER / NAV --------------- */
+
+const app = document.getElementById('app');
+document.getElementById('title').innerText = `${state.companyName} — Inventory & Itinerary Manager`;
+document.getElementById('hostName').innerText = state.host;
+
+document.getElementById('nav-master').onclick = ()=>{ view='master'; render(); }
+document.getElementById('nav-incoming').onclick = ()=>{ view='incoming'; render(); }
+document.getElementById('nav-outgoing').onclick = ()=>{ view='outgoing'; render(); }
+document.getElementById('nav-projects').onclick = ()=>{ view='projects'; render(); }
+document.getElementById('nav-reports').onclick = ()=>{ view='reports'; render(); }
+document.getElementById('btn-admin').onclick = ()=>{ view='admin'; render(); }
+
+function render(){
+  if(view==='master') renderMaster();
+  else if(view==='incoming') renderIncoming();
+  else if(view==='outgoing') renderOutgoing();
+  else if(view==='projects') renderProjects();
+  else if(view==='reports') renderReports();
+  else if(view==='admin') renderAdmin();
+}
+
+/* --------------- MASTER: Items list + add/edit --------------- */
+
+function renderMaster(){
+  app.innerHTML = `
+  <section class="card">
+    <div class="grid cols-3">
+      <div>
+        <h3>Master Items</h3>
+        <div class="small muted">Add, edit or delete master items. Use "Quantity adjust" to set stock counts (use for starting inventory or manual correction).</div>
+      </div>
+      <div class="small">
+        Company: <strong id="companyNameDisplay">${state.companyName}</strong><br>
+        Total items: <strong>${state.items.length}</strong><br>
+        Total transactions: <strong>${state.transactions.length}</strong>
+      </div>
+      <div class="right">
+        <div class="controls">
+          <button id="btn-add-item" class="btn btn-primary">+ Add Item</button>
+          <button id="btn-import" class="btn">Import JSON</button>
+          <button id="btn-reset" class="btn danger">Reset All (danger)</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;" class="search">
+      <input id="masterSearch" placeholder="Search by id or name..." />
+      <select id="sortMaster"><option value="id">Sort by ID</option><option value="name">Sort by name</option></select>
+    </div>
+
+    <div id="masterTableWrap"></div>
+  </section>
+  `;
+  document.getElementById('btn-add-item').onclick = ()=> showAddEditItem();
+  document.getElementById('btn-import').onclick = ()=> {
+    const json = prompt("Paste JSON array of items (id,name,qty optional) to import (this app will append):");
+    if(!json) return;
+    try{
+      const arr = JSON.parse(json);
+      if(!Array.isArray(arr)) throw 'not array';
+      for(const it of arr){
+        const item = { id: String(it.id||uid('i')), name: String(it.name||'Unnamed'), sku:String(it.sku||it.id||''), qty: Number(it.qty||0), meta: it.meta||'' };
+        state.items.push(item);
+      }
+      saveState(state); alert('Imported '+arr.length+' items'); render();
+    }catch(e){ alert('Invalid JSON: '+e) }
+  };
+  document.getElementById('btn-reset').onclick = ()=> {
+    if(!confirm('Reset app to initial state? This clears local storage.')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    state = loadState();
+    render();
+  };
+
+  document.getElementById('masterSearch').oninput = renderMasterTable;
+  document.getElementById('sortMaster').onchange = renderMasterTable;
+  renderMasterTable();
+}
+
+function renderMasterTable(){
+  const q = (document.getElementById('masterSearch')||{value:''}).value.toLowerCase();
+  const sortBy = (document.getElementById('sortMaster')||{value:'id'}).value;
+  let items = [...state.items];
+  if(q) items = items.filter(it=> (it.name+' '+it.id+' '+(it.sku||'')).toLowerCase().includes(q));
+  if(sortBy==='name') items.sort((a,b)=>a.name.localeCompare(b.name));
+  else items.sort((a,b)=> (Number(a.id)||a.id) - (Number(b.id)||b.id));
+
+  const rows = items.map(it=>`
+    <tr>
+      <td><strong>${it.id}</strong></td>
+      <td>${it.name}</td>
+      <td class="small muted">${it.sku||''}</td>
+      <td>${it.qty||0}</td>
+      <td><button data-id="${it.id}" class="btn edit">Edit</button> <button data-id="${it.id}" class="btn adjust">Qty Adjust</button> <button data-id="${it.id}" class="btn delete">Delete</button></td>
+    </tr>
+  `).join('');
+
+  document.getElementById('masterTableWrap').innerHTML = `<table class="compact"><thead><tr><th>ID</th><th>Name</th><th class="small muted">SKU</th><th>Qty</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+
+  Array.from(document.querySelectorAll('.edit')).forEach(b=>b.onclick = e=> {
+    const id = e.target.dataset.id; const it = state.items.find(i=>i.id==id);
+    showAddEditItem(it);
+  });
+  Array.from(document.querySelectorAll('.adjust')).forEach(b=>b.onclick = e=>{
+    const id = e.target.dataset.id; const it = state.items.find(i=>i.id==id);
+    const val = prompt(`Adjust quantity for ${it.name} (current ${it.qty||0}). Use +N or -N or absolute number:`, "+0");
+    if(val==null) return;
+    let q = Number(it.qty||0);
+    if(String(val).startsWith('+')) q += Number(val.slice(1));
+    else if(String(val).startsWith('-')) q += Number(val);
+    else q = Number(val);
+    it.qty = Math.max(0, Math.floor(q));
+    saveState(state); render();
+  });
+  Array.from(document.querySelectorAll('.delete')).forEach(b=>b.onclick = e=>{
+    const id = e.target.dataset.id; const it = state.items.find(i=>i.id==id);
+    if(!confirm(`Delete ${it.name}? This will remove item from master but past transactions remain.`)) return;
+    state.items = state.items.filter(i=>i.id!=id);
+    saveState(state); render();
+  });
+}
+
+function showAddEditItem(item){
+  const isEdit = !!item;
+  const html = document.createElement('div'); html.className='card';
+  html.innerHTML = `
+    <h3>${isEdit ? 'Edit' : 'Add'} Item</h3>
+    <div class="grid cols-2">
+      <div><label>Item ID / SKU <input id="itm-id" value="${isEdit?item.id:uid('I')}"></label></div>
+      <div><label>Name <input id="itm-name" value="${isEdit?item.name:''}"></label></div>
+      <div><label>Initial Qty <input id="itm-qty" type="number" value="${isEdit?item.qty||0:0}"></label></div>
+      <div><label>Meta / Notes <input id="itm-meta" value="${isEdit?item.meta||'' : ''}"></label></div>
+    </div>
+    <div style="margin-top:10px">
+      <button id="saveItem" class="btn btn-primary">${isEdit? 'Save' : 'Add'}</button>
+      <button id="cancelItem" class="btn">Cancel</button>
+    </div>
+  `;
+  app.prepend(html);
+  document.getElementById('cancelItem').onclick = ()=>{ html.remove(); };
+  document.getElementById('saveItem').onclick = ()=>{
+    const id = document.getElementById('itm-id').value.trim() || uid('i');
+    const name = document.getElementById('itm-name').value.trim() || 'Unnamed';
+    const qty = Number(document.getElementById('itm-qty').value||0);
+    const meta = document.getElementById('itm-meta').value||'';
+    if(isEdit){
+      const it = state.items.find(i=>i.id==item.id);
+      it.id = id; it.name = name; it.qty = qty; it.meta = meta;
+    }else{
+      if(state.items.some(i=>i.id==id)) if(!confirm('ID exists. Add duplicate?')) return;
+      state.items.push({id, name, sku:id, qty, meta});
+    }
+    saveState(state); html.remove(); render();
+  };
+}
+
+/* --------------- INCOMING (purchase/received) --------------- */
+
+function renderIncoming(){
+  app.innerHTML = `
+  <section class="card">
+    <div class="grid cols-3">
+      <div><h3>Incoming / Purchase</h3><div class="small muted">Record items received into office or project.</div></div>
+      <div class="small">Total incoming: <strong>${state.transactions.filter(t=>t.type==='IN').length}</strong></div>
+      <div class="right">
+        <div class="controls">
+          <button id="btn-new-in" class="btn btn-primary">+ New Incoming</button>
+          <button id="btn-view-in" class="btn">View All Incoming</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px" id="incomingListWrap"></div>
+  </section>
+  `;
+  document.getElementById('btn-new-in').onclick = ()=> showIncomingForm();
+  document.getElementById('btn-view-in').onclick = renderIncomingList;
+
+  renderIncomingList();
+}
+
+function renderIncomingList(){
+  const rows = state.transactions.filter(t=>t.type==='IN').map(t=>{
+    const it = state.items.find(i=>i.id==t.itemId) || {name: t.itemId};
+    const project = state.projects.find(p=>p.id==t.projectId);
+    return `<tr>
+      <td>${t.date.slice(0,19).replace('T',' ')}</td>
+      <td><strong>${it.name}</strong> <div class="small muted">${it.id}</div></td>
+      <td>${t.qty}</td>
+      <td>${t.price || ''}</td>
+      <td>${t.who}</td>
+      <td>${project ? project.name : (t.forOffice ? 'Office' : '')}</td>
+      <td class="small muted">${t.notes||''}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('incomingListWrap').innerHTML = `<table><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Price</th><th>Who</th><th>For</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function showIncomingForm(prefill={}){
+  const html = document.createElement('div'); html.className='card';
+  const projectOptions = `<option value="">-- Office Itinerary --</option>` + state.projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const itemOptions = state.items.map(i=>`<option value="${i.id}">${i.id} - ${i.name}</option>`).join('');
+  html.innerHTML = `
+    <h3>Record Incoming Item</h3>
+    <div class="grid cols-2">
+      <div><label>Item <select id="in-item">${itemOptions}</select></label></div>
+      <div><label>Qty <input id="in-qty" type="number" value="${prefill.qty||1}"></label></div>
+      <div><label>Price (per unit) <input id="in-price" type="number" value="${prefill.price||0}"></label></div>
+      <div><label>Received by (who) <input id="in-who" value="${prefill.who||''}"></label></div>
+      <div><label>For project <select id="in-project">${projectOptions}</select></label></div>
+      <div><label>Is this for Office only? <input id="in-office" type="checkbox" ${prefill.forOffice? 'checked' : ''}></label></div>
+      <div style="grid-column:1/3"><label>Notes <textarea id="in-notes" rows="3">${prefill.notes||''}</textarea></label></div>
+    </div>
+    <div style="margin-top:10px">
+      <button id="saveIn" class="btn btn-primary">Save Incoming</button>
+      <button id="cancelIn" class="btn">Cancel</button>
+    </div>
+  `;
+  app.prepend(html);
+  document.getElementById('cancelIn').onclick = ()=> html.remove();
+  document.getElementById('saveIn').onclick = ()=>{
+    const itemId = document.getElementById('in-item').value;
+    const qty = Math.max(0, Number(document.getElementById('in-qty').value||0));
+    const price = Number(document.getElementById('in-price').value||0);
+    const who = document.getElementById('in-who').value || currentUser.username;
+    const projectId = document.getElementById('in-project').value || null;
+    const forOffice = document.getElementById('in-office').checked;
+    const notes = document.getElementById('in-notes').value||'';
+    if(!itemId){ alert('Select item'); return; }
+    const t = { id: uid('T'), type:'IN', itemId, qty, price, who, date:todayIso(), projectId, forOffice, notes };
+    state.transactions.push(t);
+    // update stock
+    const it = state.items.find(i=>i.id==itemId);
+    if(it) it.qty = (it.qty||0) + qty;
+    saveState(state);
+    html.remove();
+    renderIncomingList();
+  };
+}
+
+/* --------------- OUTGOING (issue/transfer) --------------- */
+
+function renderOutgoing(){
+  app.innerHTML = `
+  <section class="card">
+    <div class="grid cols-3">
+      <div><h3>Outgoing / Issue</h3><div class="small muted">Record items taken out — track if returned or not.</div></div>
+      <div class="small">Total outgoing: <strong>${state.transactions.filter(t=>t.type==='OUT').length}</strong></div>
+      <div class="right">
+        <div class="controls">
+          <button id="btn-new-out" class="btn btn-primary">+ New Outgoing</button>
+          <button id="btn-view-out" class="btn">View All Outgoing</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px" id="outgoingListWrap"></div>
+  </section>
+  `;
+  document.getElementById('btn-new-out').onclick = ()=> showOutgoingForm();
+  document.getElementById('btn-view-out').onclick = renderOutgoingList;
+  renderOutgoingList();
+}
+
+function renderOutgoingList(){
+  const rows = state.transactions.filter(t=>t.type==='OUT').map(t=>{
+    const it = state.items.find(i=>i.id==t.itemId) || {name: t.itemId};
+    const project = state.projects.find(p=>p.id==t.projectId);
+    return `<tr>
+      <td>${t.date.slice(0,19).replace('T',' ')}</td>
+      <td><strong>${it.name}</strong> <div class="small muted">${it.id}</div></td>
+      <td>${t.qty}</td>
+      <td>${t.who}</td>
+      <td>${project ? project.name : (t.forOffice ? 'Office' : '')}</td>
+      <td>${t.returned ? '<span class="tag in">Returned</span>' : '<span class="tag out">Not returned</span>'}</td>
+      <td class="small muted">${t.notes||''}</td>
+      <td><button data-id="${t.id}" class="btn markReturn">${t.returned? 'Mark Not Returned' : 'Mark Returned'}</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('outgoingListWrap').innerHTML = `<table><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Who</th><th>For</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+  Array.from(document.querySelectorAll('.markReturn')).forEach(b=>b.onclick=e=>{
+    const id = e.target.dataset.id;
+    const t = state.transactions.find(x=>x.id==id);
+    if(!t) return;
+    t.returned = !t.returned;
+    if(t.returned){
+      // when returned, add back to qty
+      const it = state.items.find(i=>i.id==t.itemId);
+      if(it) it.qty = (it.qty||0) + Number(t.qty||0);
+    }else{
+      // marking not returned will deduct again (if it was previously returned)
+      const it = state.items.find(i=>i.id==t.itemId);
+      if(it) it.qty = Math.max(0, (it.qty||0) - Number(t.qty||0));
+    }
+    saveState(state);
+    renderOutgoingList();
+  });
+}
+
+function showOutgoingForm(prefill={}){
+  const html = document.createElement('div'); html.className='card';
+  const projectOptions = `<option value="">-- Office Itinerary --</option>` + state.projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const itemOptions = state.items.map(i=>`<option value="${i.id}">${i.id} - ${i.name} (in stock: ${i.qty||0})</option>`).join('');
+  html.innerHTML = `
+    <h3>Record Outgoing Item</h3>
+    <div class="grid cols-2">
+      <div><label>Item <select id="out-item">${itemOptions}</select></label></div>
+      <div><label>Qty <input id="out-qty" type="number" value="${prefill.qty||1}"></label></div>
+      <div><label>Taken by (who) <input id="out-who" value="${prefill.who||''}"></label></div>
+      <div><label>Project <select id="out-project">${projectOptions}</select></label></div>
+      <div><label>Is this for Office only? <input id="out-office" type="checkbox" ${prefill.forOffice? 'checked' : ''}></label></div>
+      <div><label>Return expected? <input id="out-expected-return" type="checkbox" ${prefill.expectedReturn? 'checked' : ''}></label></div>
+      <div style="grid-column:1/3"><label>Notes <textarea id="out-notes" rows="3">${prefill.notes||''}</textarea></label></div>
+    </div>
+    <div style="margin-top:10px">
+      <button id="saveOut" class="btn btn-primary">Save Outgoing</button>
+      <button id="cancelOut" class="btn">Cancel</button>
+    </div>
+  `;
+  app.prepend(html);
+  document.getElementById('cancelOut').onclick = ()=> html.remove();
+  document.getElementById('saveOut').onclick = ()=>{
+    const itemId = document.getElementById('out-item').value;
+    const qty = Math.max(0, Number(document.getElementById('out-qty').value||0));
+    const who = document.getElementById('out-who').value || currentUser.username;
+    const projectId = document.getElementById('out-project').value || null;
+    const forOffice = document.getElementById('out-office').checked;
+    const expectedReturn = document.getElementById('out-expected-return').checked;
+    const notes = document.getElementById('out-notes').value||'';
+    if(!itemId){ alert('Select item'); return; }
+    const it = state.items.find(i=>i.id==itemId);
+    if(it && qty > (it.qty||0) && !confirm('Quantity exceeds current stock. Proceed? This will allow negative stock.')) {
+      return;
+    }
+    const t = { id: uid('T'), type:'OUT', itemId, qty, who, date:todayIso(), projectId, forOffice, expectedReturn, notes, returned:false };
+    state.transactions.push(t);
+    if(it) it.qty = (it.qty||0) - qty;
+    saveState(state);
+    html.remove();
+    renderOutgoingList();
+  };
+}
+
+/* --------------- PROJECTS --------------- */
+
+function renderProjects(){
+  app.innerHTML = `
+  <section class="card">
+    <div class="grid cols-3">
+      <div><h3>Projects</h3><div class="small muted">Create projects and view project-wise consumption/returns.</div></div>
+      <div class="small">Total projects: <strong>${state.projects.length}</strong></div>
+      <div class="right"><button id="btn-new-project" class="btn btn-primary">+ New Project</button></div>
+    </div>
+
+    <div style="margin-top:12px;" id="projectsWrap"></div>
+  </section>
+  `;
+  document.getElementById('btn-new-project').onclick = ()=> showProjectForm();
+  renderProjectList();
+}
+
+function renderProjectList(){
+  const rows = state.projects.map(p=>{
+    const used = state.transactions.filter(t=>t.projectId==p.id && t.type==='OUT').reduce((s,t)=>s + Number(t.qty||0),0);
+    const incoming = state.transactions.filter(t=>t.projectId==p.id && t.type==='IN').reduce((s,t)=>s + Number(t.qty||0),0);
+    return `<tr>
+      <td>${p.name}</td>
+      <td class="small muted">${p.id}</td>
+      <td>${p.client||''}</td>
+      <td>${incoming}</td>
+      <td>${used}</td>
+      <td><button data-id="${p.id}" class="btn viewProj">View</button> <button data-id="${p.id}" class="btn editProj">Edit</button> <button data-id="${p.id}" class="btn delProj">Delete</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('projectsWrap').innerHTML = `<table><thead><tr><th>Project</th><th>ID</th><th>Client</th><th>Incoming</th><th>Used</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table>`;
+  Array.from(document.querySelectorAll('.viewProj')).forEach(b=>b.onclick=e=>{
+    const id = e.target.dataset.id; showProjectDetails(id);
+  });
+  Array.from(document.querySelectorAll('.editProj')).forEach(b=>b.onclick=e=>{
+    const id = e.target.dataset.id; const p = state.projects.find(x=>x.id==id); showProjectForm(p);
+  });
+  Array.from(document.querySelectorAll('.delProj')).forEach(b=>b.onclick=e=>{
+    const id = e.target.dataset.id; const p = state.projects.find(x=>x.id==id);
+    if(!confirm('Delete project '+p.name+'?')) return;
+    state.projects = state.projects.filter(x=>x.id!=id);
+    saveState(state); renderProjects();
+  });
+}
+
+function showProjectForm(project){
+  const isEdit = !!project;
+  const html = document.createElement('div'); html.className='card';
+  html.innerHTML = `
+    <h3>${isEdit? 'Edit' : 'New'} Project</h3>
+    <div class="grid cols-2">
+      <div><label>Project Name <input id="proj-name" value="${isEdit?project.name:''}"></label></div>
+      <div><label>Project ID <input id="proj-id" value="${isEdit?project.id:uid('P')}"></label></div>
+      <div><label>Client <input id="proj-client" value="${isEdit?project.client||'' : ''}"></label></div>
+      <div><label>Notes <input id="proj-notes" value="${isEdit?project.notes||'' : ''}"></label></div>
+    </div>
+    <div style="margin-top:10px">
+      <button id="saveProj" class="btn btn-primary">${isEdit? 'Save' : 'Create'}</button>
+      <button id="cancelProj" class="btn">Cancel</button>
+    </div>
+  `;
+  app.prepend(html);
+  document.getElementById('cancelProj').onclick = ()=> html.remove();
+  document.getElementById('saveProj').onclick = ()=>{
+    const id = document.getElementById('proj-id').value.trim() || uid('P');
+    const name = document.getElementById('proj-name').value.trim() || 'Untitled';
+    const client = document.getElementById('proj-client').value||'';
+    const notes = document.getElementById('proj-notes').value||'';
+    if(isEdit){
+      project.id = id; project.name = name; project.client = client; project.notes = notes;
+    }else{
+      state.projects.push({id,name,client,notes});
+    }
+    saveState(state); html.remove(); renderProjects();
+  };
+}
+
+function showProjectDetails(id){
+  const p = state.projects.find(x=>x.id==id);
+  if(!p) return alert('Project not found');
+  const incoming = state.transactions.filter(t=>t.projectId==id && t.type==='IN');
+  const outgoing = state.transactions.filter(t=>t.projectId==id && t.type==='OUT');
+  const itemsUsed = {};
+  outgoing.forEach(t=>{ itemsUsed[t.itemId] = (itemsUsed[t.itemId]||0) + Number(t.qty||0); });
+  const rows = Object.entries(itemsUsed).map(([itemId,qty])=>{
+    const it = state.items.find(i=>i.id==itemId) || {name:itemId};
+    return `<tr><td>${it.name}</td><td>${itemId}</td><td>${qty}</td></tr>`;
+  }).join('');
+  const html = document.createElement('div'); html.className='card';
+  html.innerHTML = `
+    <h3>Project: ${p.name}</h3>
+    <div class="small muted">ID: ${p.id} · Client: ${p.client || '—'}</div>
+    <div style="margin-top:8px">
+      <h4>Items used (outgoing)</h4>
+      <table><thead><tr><th>Item</th><th>ID</th><th>Qty</th></tr></thead><tbody>${rows||'<tr><td colspan="3" class="muted small">No outgoing items yet</td></tr>'}</tbody></table>
+    </div>
+    <div style="margin-top:8px">
+      <h4>Incoming to project</h4>
+      <table><thead><tr><th>Date</th><th>Item</th><th>Qty</th><th>Who</th></tr></thead>
+      <tbody>${incoming.map(t=>`<tr><td>${t.date.slice(0,19).replace('T',' ')}</td><td>${(state.items.find(i=>i.id==t.itemId)||{name:t.itemId}).name} <div class="small muted">${t.itemId}</div></td><td>${t.qty}</td><td>${t.who}</td></tr>`).join('') || '<tr><td colspan=4 class="muted small">No incoming</td></tr>'}</tbody></table>
+    </div>
+    <div style="margin-top:8px">
+      <button id="closeProj" class="btn">Close</button>
+    </div>
+  `;
+  app.prepend(html);
+  document.getElementById('closeProj').onclick = ()=> html.remove();
+}
+
+/* --------------- REPORTS & EXPORT --------------- */
+
+function renderReports(){
+  app.innerHTML = `
+  <section class="card">
+    <div class="grid cols-3">
+      <div><h3>Reports & Export</h3><div class="small muted">Export transactions or current inventory as CSV / JSON.</div></div>
+      <div class="small">Stocks: <strong>${state.items.length}</strong></div>
+      <div class="right"><div class="controls">
+        <button id="exportCSV" class="btn btn-primary">Export Transactions CSV</button>
+        <button id="exportItemsCSV" class="btn">Export Inventory CSV</button>
+        <button id="exportJSON" class="btn">Export Full JSON</button>
+        <button id="importJSON" class="btn">Import Full JSON</button>
+      </div></div>
+    </div>
+
+    <div style="margin-top:12px">
+      <h4>Quick Filters</h4>
+      <div class="controls">
+        <select id="report-project"><option value="">-- All Projects --</option>${state.projects.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
+        <select id="report-type"><option value="">All</option><option value="IN">Incoming</option><option value="OUT">Outgoing</option></select>
+        <input id="report-from" type="date" />
+        <input id="report-to" type="date" />
+        <button id="applyFilter" class="btn">Apply</button>
+      </div>
+    </div>
+
+    <div id="reportTable" style="margin-top:12px"></div>
+  </section>
+  `;
+  document.getElementById('exportCSV').onclick = ()=> exportTransactionsCSV();
+  document.getElementById('exportItemsCSV').onclick = ()=> exportInventoryCSV();
+  document.getElementById('exportJSON').onclick = ()=> {
+    const dataStr = JSON.stringify(state, null, 2);
+    downloadText('abc_inventory_export.json', dataStr);
+  };
+  document.getElementById('importJSON').onclick = ()=> {
+    const j = prompt('Paste full JSON exported earlier to import/merge:');
+    if(!j) return;
+    try{
+      const obj = JSON.parse(j);
+      if(confirm('This will overwrite current state. Proceed?')){
+        state = obj;
+        saveState(state);
+        alert('Imported');
+        render();
+      }
+    }catch(e){ alert('Invalid JSON: '+e) }
+  };
+  document.getElementById('applyFilter').onclick = renderReportTable;
+  renderReportTable();
+}
+
+function renderReportTable(){
+  const proj = document.getElementById('report-project').value;
+  const type = document.getElementById('report-type').value;
+  const from = document.getElementById('report-from').value ? new Date(document.getElementById('report-from').value) : null;
+  const to = document.getElementById('report-to').value ? new Date(document.getElementById('report-to').value) : null;
+  let rows = state.transactions.filter(t=>{
+    if(proj && t.projectId !== proj) return false;
+    if(type && t.type !== type) return false;
+    if(from) { if(new Date(t.date) < from) return false; }
+    if(to) { const d = new Date(t.date); d.setHours(23,59,59,999); if(d > to){}; if(new Date(t.date) > to) return false; }
+    return true;
+  }).map(t=>{
+    const it = state.items.find(i=>i.id==t.itemId) || {name:t.itemId};
+    return `<tr>
+      <td>${t.id}</td>
+      <td>${t.type}</td>
+      <td>${t.date.slice(0,19).replace('T',' ')}</td>
+      <td>${it.name}</td>
+      <td>${t.itemId}</td>
+      <td>${t.qty}</td>
+      <td>${t.price||''}</td>
+      <td>${t.who}</td>
+      <td>${state.projects.find(p=>p.id==t.projectId)?.name|| (t.forOffice ? 'Office' : '')}</td>
+      <td>${t.returned? 'Returned': (t.type==='OUT' ? 'Not returned' : '')}</td>
+      <td class="small muted">${t.notes||''}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('reportTable').innerHTML = `<table><thead><tr><th>ID</th><th>Type</th><th>Date</th><th>Item</th><th>ItemID</th><th>Qty</th><th>Price</th><th>Who</th><th>Project/For</th><th>Status</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function exportTransactionsCSV(){
+  const rows = [
+    ['id','type','date','itemId','itemName','qty','price','who','projectId','projectName','forOffice','returned','notes']
+  ];
+  state.transactions.forEach(t=>{
+    const it = state.items.find(i=>i.id==t.itemId) || {name:t.itemId};
+    const pj = state.projects.find(p=>p.id==t.projectId);
+    rows.push([t.id,t.type,t.date,t.itemId,it.name,t.qty,t.price||'',t.who,t.projectId||'',pj?pj.name:'',t.forOffice?1:0,t.returned?1:0,t.notes||'']);
+  });
+  downloadText('transactions.csv', toCSV(rows));
+}
+
+function exportInventoryCSV(){
+  const rows = [['id','name','sku','qty','meta']];
+  state.items.forEach(i=> rows.push([i.id,i.name,i.sku||'',i.qty||0,i.meta||'']));
+  downloadText('inventory.csv', toCSV(rows));
+}
+
+function downloadText(filename, text){
+  const blob = new Blob([text], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* --------------- ADMIN --------------- */
+
+function renderAdmin(){
+  app.innerHTML = `
+  <section class="card">
+    <h3>Admin</h3>
+    <div class="grid cols-2">
+      <div>
+        <label>Company Name <input id="admin-company" value="${state.companyName}"></label>
+      </div>
+      <div>
+        <label>Host (admin display) <input id="admin-host" value="${state.host}"></label>
+      </div>
+    </div>
+    <div style="margin-top:10px;" class="grid cols-3">
+      <div>
+        <h4>Users</h4>
+        <div class="small muted">Local users (simple auth). Default: Amit / admin</div>
+        <div id="usersList"></div>
+      </div>
+      <div>
+        <h4>Import / Export</h4>
+        <div class="small muted">Export all data or import a saved JSON.</div>
+        <div style="margin-top:8px">
+          <button id="admin-export" class="btn btn-primary">Export All JSON</button>
+          <button id="admin-import" class="btn">Import JSON (overwrite)</button>
+        </div>
+      </div>
+      <div>
+        <h4>Danger Zone</h4>
+        <div class="small muted">Reset app or clear transactions.</div>
+        <div style="margin-top:8px">
+          <button id="clearTx" class="btn">Clear Transactions</button>
+          <button id="resetAll" class="btn danger">Reset App (clear all)</button>
+        </div>
+      </div>
+    </div>
+  </section>
+  `;
+  document.getElementById('admin-company').onchange = (e)=>{ state.companyName = e.target.value; saveState(state); document.getElementById('title').innerText = state.companyName + ' — Inventory & Itinerary Manager'; };
+  document.getElementById('admin-host').onchange = (e)=>{ state.host = e.target.value; saveState(state); document.getElementById('hostName').innerText = state.host; };
+
+  function renderUsers(){
+    const html = state.users.map(u=>`<div class="small"><strong>${u.username}</strong> (${u.role}) <button data-user="${u.username}" class="btn editU">Edit</button> <button data-user="${u.username}" class="btn delU">Delete</button></div>`).join('');
+    document.getElementById('usersList').innerHTML = html + `<div style="margin-top:8px"><button id="addUser" class="btn">+ Add User</button></div>`;
+    Array.from(document.querySelectorAll('.editU')).forEach(b=>b.onclick=e=>{
+      const uname = e.target.dataset.user; const user = state.users.find(x=>x.username==uname);
+      const newPass = prompt('Change password for '+uname, user.password);
+      if(newPass==null) return;
+      user.password = newPass; saveState(state); renderUsers();
+    });
+    Array.from(document.querySelectorAll('.delU')).forEach(b=>b.onclick=e=>{
+      const uname = e.target.dataset.user; if(!confirm('Delete user '+uname+'?')) return;
+      state.users = state.users.filter(x=>x.username!=uname); saveState(state); renderUsers();
+    });
+    document.getElementById('addUser').onclick = ()=>{
+      const username = prompt('Username:');
+      if(!username) return;
+      const password = prompt('Password:');
+      const role = prompt('Role (admin/user):','user');
+      state.users.push({username,password,role});
+      saveState(state); renderUsers();
+    };
+  }
+  renderUsers();
+
+  document.getElementById('admin-export').onclick = ()=> downloadText('abc_inventory_full.json', JSON.stringify(state,null,2));
+  document.getElementById('admin-import').onclick = ()=> {
+    const j = prompt('Paste exported JSON to restore (this will overwrite current state):');
+    if(!j) return;
+    try{
+      const obj = JSON.parse(j);
+      if(confirm('Overwrite current data with imported data?')) {
+        state = obj;
+        saveState(state); alert('Imported. Refreshing view.');
+        render();
+      }
+    }catch(e){ alert('Invalid JSON: '+e) }
+  };
+  document.getElementById('clearTx').onclick = ()=>{
+    if(!confirm('Clear ALL transactions?')) return;
+    state.transactions = [];
+    saveState(state); alert('Cleared'); render();
+  };
+  document.getElementById('resetAll').onclick = ()=>{
+    if(!confirm('Reset ALL data to initial defaults? This clears localStorage.')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    state = loadState(); alert('Reset done'); render();
+  };
+}
+
+/* --------------- BOOT --------------- */
+
+render();
+</script>
+
+</body>
+</html>
